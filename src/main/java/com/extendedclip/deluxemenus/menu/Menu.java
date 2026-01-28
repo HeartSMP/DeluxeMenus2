@@ -304,7 +304,7 @@ public class Menu {
 
                     int slot = item.options().slot();
 
-                    if (slot >= this.options.size()) {
+                    if (item.options().dynamicSlot().isEmpty() && (slot < 0 || slot >= this.options.size())) {
                         plugin.debug(
                                 DebugLevel.HIGHEST,
                                 Level.WARNING,
@@ -319,12 +319,11 @@ public class Menu {
                         if (item.options().viewRequirements().get().evaluate(holder)) {
 
                             activeItems.add(item);
-                            break;
+                            if (item.options().dynamicSlot().isEmpty()) break;
                         }
                     } else {
-
                         activeItems.add(item);
-                        break;
+                        if (item.options().dynamicSlot().isEmpty()) break;
                     }
                 }
             }
@@ -358,16 +357,21 @@ public class Menu {
                 if (iStack == null) {
                     continue;
                 }
-                test
 
                 iStack = plugin.getMenuItemMarker().mark(iStack);
 
                 int slot = item.options().slot();
 
+                if (item.options().dynamicSlot().isEmpty() && (slot < 0 || slot >= this.options.size())) {
+                    continue;
+                }
+
                 if (item.options().dynamicSlot().isPresent()) {
+                    String slotStr = null;
                     try {
-                        String slotStr = holder.setPlaceholdersAndArguments(item.options().dynamicSlot().get());
-                        int dynamic = Integer.parseInt(slotStr);
+                        slotStr = holder.setPlaceholdersAndArguments(item.options().dynamicSlot().get());
+                        slotStr = slotStr.trim();
+                        int dynamic = (int) Math.floor(Double.parseDouble(slotStr));
 
                         if (dynamic >= 0 && dynamic < this.options.size()) {
                             slot = dynamic;
@@ -379,17 +383,10 @@ public class Menu {
                     } catch (NumberFormatException e) {
                         plugin.printStacktrace("Invalid dynamic_slot value for item in menu " + this.options.name(), e);
                         continue;
+                    } catch (Exception e) {
+                        plugin.printStacktrace("Invalid dynamic_slot '" + slotStr + "' for menu " + this.options.name(), e);
+                        continue;
                     }
-                }
-
-                if (slot >= this.options.size()) {
-                    plugin.debug(
-                            DebugLevel.HIGHEST,
-                            Level.WARNING,
-                            "Item set to slot " + slot + " for menu: " + this.options.name() + " exceeds the inventory size!",
-                            "This item will not be added to the menu!"
-                    );
-                    continue;
                 }
 
                 if (item.options().updatePlaceholders()) {

@@ -588,6 +588,7 @@ public class DeluxeMenusConfig {
         }
 
         Map<Integer, TreeMap<Integer, MenuItem>> menuItems = new HashMap<>();
+        int dynamicCounter = 0;
 
         for (String key : itemKeys) {
 
@@ -830,13 +831,12 @@ public class DeluxeMenusConfig {
             final MenuItem menuItem = new MenuItem(plugin, builder.build());
 
             for (int slot : slots) {
-                TreeMap<Integer, MenuItem> slotPriorityMap;
-                if ((!menuItems.containsKey(slot)) || menuItems.get(slot) == null) {
-                    slotPriorityMap = new TreeMap<>();
-                    menuItems.put(slot, slotPriorityMap);
-                } else {
-                    slotPriorityMap = menuItems.get(slot);
+                if (menuItem.options().dynamicSlot().isPresent()) {
+                    slot = -1000 - (dynamicCounter++);
                 }
+
+                TreeMap<Integer, MenuItem> slotPriorityMap = menuItems.computeIfAbsent(slot, k -> new TreeMap<>());
+
                 MenuItemOptions originalOptions = menuItem.options();
                 MenuItemOptions.MenuItemOptionsBuilder itemBuilder = originalOptions.asBuilder();
 
@@ -846,7 +846,8 @@ public class DeluxeMenusConfig {
 
                 MenuItem updatedItem = new MenuItem(plugin, itemBuilder.build());
 
-                slotPriorityMap.put(originalOptions.priority(), updatedItem);            }
+                slotPriorityMap.put(originalOptions.priority(), updatedItem);
+            }
         }
         return menuItems;
     }
