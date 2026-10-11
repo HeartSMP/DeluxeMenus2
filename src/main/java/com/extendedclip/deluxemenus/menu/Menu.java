@@ -333,7 +333,6 @@ public class Menu {
             }
 
             holder.setMenuName(this.options.name());
-            holder.setActiveItems(activeItems);
 
             this.options.openHandler().ifPresent(h -> h.onClick(holder));
 
@@ -350,10 +349,10 @@ public class Menu {
             holder.setInventory(inventory);
 
             boolean update = false;
+            Set<MenuItem> resolvedActiveItems = new HashSet<>();
 
             for (MenuItem item : activeItems) {
                 ItemStack iStack = item.getItemStack(holder);
-
                 if (iStack == null) {
                     continue;
                 }
@@ -362,29 +361,29 @@ public class Menu {
 
                 int slot = item.options().slot();
 
-                if (item.options().dynamicSlot().isEmpty() && (slot < 0 || slot >= this.options.size())) {
-                    continue;
-                }
-
                 if (item.options().dynamicSlot().isPresent()) {
                     String slotStr = null;
                     try {
-                        slotStr = holder.setPlaceholdersAndArguments(item.options().dynamicSlot().get());
-                        slotStr = slotStr.trim();
+                        slotStr = holder.setPlaceholdersAndArguments(item.options().dynamicSlot().get()).trim();
                         int dynamic = (int) Math.floor(Double.parseDouble(slotStr));
 
-                        if (dynamic >= 0 && dynamic < this.options.size()) {
-                            slot = dynamic;
-                        } else {
-                            plugin.debug(DebugLevel.HIGHEST, Level.WARNING, "Dynamic slot " + dynamic + " is out of bounds for menu: " + this.options.name());
+                        if (dynamic < 0 || dynamic >= this.options.size()) {
+                            plugin.debug(DebugLevel.HIGHEST, Level.WARNING,
+                                    "Dynamic slot " + dynamic + " is out of bounds for menu: " + this.options.name());
                             continue;
                         }
 
-                    } catch (NumberFormatException e) {
-                        plugin.printStacktrace("Invalid dynamic_slot value for item in menu " + this.options.name(), e);
-                        continue;
+                        slot = dynamic;
+
+                        // important: the MenuItem stored in holder must report the resolved slot
+                        item = new MenuItem(plugin, item.options().asBuilder().slot(slot).build());
+
                     } catch (Exception e) {
                         plugin.printStacktrace("Invalid dynamic_slot '" + slotStr + "' for menu " + this.options.name(), e);
+                        continue;
+                    }
+                } else {
+                    if (slot < 0 || slot >= this.options.size()) {
                         continue;
                     }
                 }
@@ -393,8 +392,11 @@ public class Menu {
                     update = true;
                 }
 
+                resolvedActiveItems.add(item);
                 inventory.setItem(slot, iStack);
             }
+
+            holder.setActiveItems(resolvedActiveItems);
 
             final boolean updatePlaceholders = update;
 
