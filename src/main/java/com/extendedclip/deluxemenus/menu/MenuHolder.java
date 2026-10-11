@@ -184,6 +184,12 @@ public class MenuHolder implements InventoryHolder {
 
                     ItemStack iStack = item.getItemStack(this);
 
+                    if (iStack == null) {
+                        continue;
+                    }
+
+                    iStack = plugin.getMenuItemMarker().mark(iStack);
+
                     int slot = item.options().slot();
 
                     if (item.options().dynamicSlot().isPresent()) {
@@ -325,11 +331,11 @@ public class MenuHolder implements InventoryHolder {
                         ItemMeta meta = i.getItemMeta();
 
                         if (item.options().displayNameHasPlaceholders() && item.options().displayName().isPresent()) {
-                            meta.setDisplayName(StringUtils.color(setPlaceholdersAndArguments(item.options().displayName().get())));
+                            meta.displayName(StringUtils.colorItemText(setPlaceholdersAndArguments(item.options().displayName().get()), plugin.getGeneralConfig().suppressDefaultItalics()));
                         }
 
                         if (item.options().loreHasPlaceholders()) {
-                            meta.setLore(item.getMenuItemLore(getHolder(), item.options().lore()));
+                            meta.lore(item.getMenuItemLore(getHolder(), item.options().lore()));
                         }
 
                         i.setItemMeta(meta);
