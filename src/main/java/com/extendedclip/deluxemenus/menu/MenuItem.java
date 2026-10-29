@@ -8,6 +8,7 @@ import com.extendedclip.deluxemenus.menu.options.MenuItemOptions;
 import com.extendedclip.deluxemenus.menu.options.CustomModelDataComponent;
 import com.extendedclip.deluxemenus.utils.DebugLevel;
 import com.extendedclip.deluxemenus.utils.ItemUtils;
+import com.extendedclip.deluxemenus.utils.SkullUtils;
 import com.extendedclip.deluxemenus.utils.StringUtils;
 import com.extendedclip.deluxemenus.utils.VersionHelper;
 import com.google.common.collect.ImmutableMultimap;
@@ -35,6 +36,7 @@ import org.bukkit.inventory.meta.FireworkEffectMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.inventory.meta.PotionMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.inventory.meta.trim.ArmorTrim;
 import org.bukkit.inventory.meta.trim.TrimMaterial;
 import org.bukkit.inventory.meta.trim.TrimPattern;
@@ -64,6 +66,7 @@ public class MenuItem {
 
     private final DeluxeMenus plugin;
     private final MenuItemOptions options;
+    private volatile boolean unknownEnchantmentWarned = false;
 
     public MenuItem(@NotNull final DeluxeMenus plugin, @NotNull final MenuItemOptions options) {
         this.plugin = plugin;
@@ -157,6 +160,14 @@ public class MenuItem {
             } else {
                 itemStack = new ItemStack(material, temporaryAmount);
             }
+        }
+
+        // A head with a textureless profile makes Paper look the profile up on every setItemMeta call below.
+        // For offline-mode UUIDs that is a Mojang request that can never succeed, so fill in known textures
+        // or fall back to a plain head before any meta is applied.
+        if (itemStack.getType() == Material.PLAYER_HEAD && itemStack.getItemMeta() instanceof SkullMeta skullMeta
+                && SkullUtils.sanitizeProfile(skullMeta)) {
+            itemStack.setItemMeta(skullMeta);
         }
 
         if (ItemUtils.isBanner(itemStack.getType())) {
@@ -412,6 +423,10 @@ public class MenuItem {
         } else if (itemMeta instanceof EnchantmentStorageMeta && !this.options.enchantments().isEmpty()) {
             final EnchantmentStorageMeta enchantmentStorageMeta = (EnchantmentStorageMeta) itemMeta;
             for (final Map.Entry<Enchantment, Integer> entry : this.options.enchantments().entrySet()) {
+                if (entry.getKey() == null) {
+                    warnUnknownEnchantment(holder);
+                    continue;
+                }
                 final boolean result = enchantmentStorageMeta.addStoredEnchant(entry.getKey(), entry.getValue(), true);
                 if (!result) {
                     plugin.debug(
@@ -427,7 +442,13 @@ public class MenuItem {
         }
 
         if (!(itemMeta instanceof EnchantmentStorageMeta) && !this.options.enchantments().isEmpty()) {
-            this.options.enchantments().forEach((enchantment, level) -> itemMeta.addEnchant(enchantment, level, true));
+            this.options.enchantments().forEach((enchantment, level) -> {
+                if (enchantment == null) {
+                    warnUnknownEnchantment(holder);
+                    return;
+                }
+                itemMeta.addEnchant(enchantment, level, true);
+            });
         }
 
         if (this.options.lightLevel().isPresent() && itemMeta instanceof BlockDataMeta) {
@@ -496,6 +517,22 @@ public class MenuItem {
         final Optional<HeadType> headType = HeadType.parseHeadType(material);
         headType.ifPresent(this.options::headType);
         return headType.isPresent();
+    }
+
+    /**
+     * Unknown enchantment names are already reported (with the name) and dropped when the menu is loaded.
+     * This is only a safety net so a null enchantment can never stop the item from being built.
+     */
+    private void warnUnknownEnchantment(@NotNull final MenuHolder holder) {
+        if (unknownEnchantmentWarned) {
+            return;
+        }
+        unknownEnchantmentWarned = true;
+        plugin.debug(
+                DebugLevel.HIGHEST,
+                Level.WARNING,
+                "Skipping an unknown enchantment on item " + this.options.material() + " in slot " + this.options.slot() + " in menu " + holder.getMenuName() + "!"
+        );
     }
 
     private @NotNull Optional<ItemStack> getItemFromHook(String hookName, String... args) {

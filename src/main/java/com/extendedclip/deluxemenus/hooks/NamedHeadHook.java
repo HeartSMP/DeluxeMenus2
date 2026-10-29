@@ -4,17 +4,14 @@ import com.extendedclip.deluxemenus.DeluxeMenus;
 import com.extendedclip.deluxemenus.cache.SimpleCache;
 import com.extendedclip.deluxemenus.listener.Listener;
 import com.extendedclip.deluxemenus.utils.SkullUtils;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 public class NamedHeadHook extends Listener implements ItemHook, SimpleCache {
-
-    private final Map<String, ItemStack> cache = new ConcurrentHashMap<>();
 
     public NamedHeadHook(@NotNull final DeluxeMenus plugin) {
         super(plugin);
@@ -27,7 +24,9 @@ public class NamedHeadHook extends Listener implements ItemHook, SimpleCache {
         }
 
         try {
-            return cache.computeIfAbsent(arguments[0], value -> SkullUtils.getSkullByName(plugin, value)).clone();
+            // SkullUtils keeps a bounded cache of resolved textures, so there is no ItemStack cache here anymore.
+            // A cached ItemStack would keep a plain head for a player who joins later, and grew without limit.
+            return SkullUtils.getSkullByName(plugin, arguments[0]);
         } catch (Exception exception) {
             plugin.printStacktrace(
                     "Something went wrong while trying to get a head by name" +
@@ -47,9 +46,10 @@ public class NamedHeadHook extends Listener implements ItemHook, SimpleCache {
         return arguments[0].equalsIgnoreCase(SkullUtils.getSkullOwner(item));
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(final PlayerQuitEvent event) {
-        cache.remove(event.getPlayer().getName());
+        // Remember the skin the player had (e.g. applied by a skin plugin) so their head keeps it while offline.
+        SkullUtils.cacheTextures(event.getPlayer().getPlayerProfile());
     }
 
     @Override
@@ -59,6 +59,6 @@ public class NamedHeadHook extends Listener implements ItemHook, SimpleCache {
 
     @Override
     public void clearCache() {
-        cache.clear();
+        SkullUtils.clearTextureCache();
     }
 }

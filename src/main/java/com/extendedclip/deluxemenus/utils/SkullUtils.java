@@ -8,12 +8,17 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Base64;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 public class SkullUtils {
@@ -22,6 +27,25 @@ public class SkullUtils {
     private static final String TEXTURE_URL_PREFIX = "https://textures.minecraft.net/texture/";
 
     private static final Gson GSON = new Gson();
+
+    /**
+     * Upper bound for {@link #TEXTURE_CACHE}. Each entry is a couple of short strings, so this stays small.
+     */
+    private static final int TEXTURE_CACHE_SIZE = 2048;
+
+    /**
+     * Known head textures keyed by {@code uuid:lowercase-name}. Only the textures property is kept, never a
+     * {@link Player} or {@link PlayerProfile}, so nothing here keeps a player object alive. Access-ordered,
+     * so the least recently used entry is dropped once the cache is full.
+     */
+    private static final Map<String, ProfileProperty> TEXTURE_CACHE = Collections.synchronizedMap(
+            new LinkedHashMap<>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(final Map.Entry<String, ProfileProperty> eldest) {
+                    return size() > TEXTURE_CACHE_SIZE;
+                }
+            }
+    );
 
     /**
      * Helper method to get the encoded bytes for a full MC Texture
@@ -85,6 +109,11 @@ public class SkullUtils {
 
     /**
      * Get the skull from a player name
+     * <p>
+     * The profile is taken from the online player when possible (it already carries the textures property),
+     * otherwise from the texture cache. A profile without textures is only handed to Paper when Mojang can
+     * actually resolve it (a version 4 UUID). For anything else, such as offline-mode (version 3) UUIDs, a
+     * plain head is returned, because Paper would otherwise query Mojang on every {@code setItemMeta} call.
      *
      * @param playerName the player name to use
      * @return skull
@@ -101,18 +130,173 @@ public class SkullUtils {
             return head;
         }
 
-        final OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(playerName);
-        final PlayerProfile profile = offlinePlayer.getPlayerProfile();
-
-        if (!profile.hasTextures()) {
-            // updates the Player Profile and populates textures for offline players - for some reason this doesn't populate when getting the Profile first time
-            headMeta.setPlayerProfile(profile.update().join());
-        } else {
-            headMeta.setOwningPlayer(offlinePlayer);
+        PlayerProfile profile = resolveProfile(null, playerName);
+        if (profile == null) {
+            profile = lookupResolvableProfile(playerName);
         }
 
+        if (profile == null) {
+            return head;
+        }
+
+        headMeta.setPlayerProfile(profile);
         head.setItemMeta(headMeta);
         return head;
+    }
+
+    /**
+     * Make sure a skull meta does not carry a profile that would make Paper go to Mojang for nothing. A profile
+     * without textures gets the textures of the online player or from the cache. If none are known and Mojang
+     * cannot resolve the profile either, the profile is removed so the item becomes a plain head.
+     *
+     * @param meta the skull meta to check
+     * @return {@code true} if the meta was changed and has to be applied to the item again
+     */
+    public static boolean sanitizeProfile(@NotNull final SkullMeta meta) {
+        final PlayerProfile profile = meta.getPlayerProfile();
+        if (profile == null || profile.hasTextures()) {
+            return false;
+        }
+
+        final PlayerProfile resolved = resolveProfile(profile.getId(), profile.getName());
+        if (resolved != null) {
+            meta.setPlayerProfile(resolved);
+            return true;
+        }
+
+        if (isResolvableByMojang(profile)) {
+            return false;
+        }
+
+        meta.setPlayerProfile(null);
+        return true;
+    }
+
+    /**
+     * Remember the textures of a profile so heads of this player keep their skin while the player is offline.
+     *
+     * @param profile the profile to take the textures from
+     */
+    public static void cacheTextures(@Nullable final PlayerProfile profile) {
+        if (profile == null || profile.getId() == null || profile.getName() == null) {
+            return;
+        }
+
+        final ProfileProperty textures = getTexturesProperty(profile);
+        if (textures != null) {
+            TEXTURE_CACHE.put(textureCacheKey(profile.getId(), profile.getName()), textures);
+        }
+    }
+
+    public static void clearTextureCache() {
+        TEXTURE_CACHE.clear();
+    }
+
+    /**
+     * Find a profile with textures without any network request: the online player's own profile first, then the
+     * texture cache.
+     *
+     * @return a profile carrying textures, or {@code null} if no textures are known locally
+     */
+    private static @Nullable PlayerProfile resolveProfile(@Nullable UUID id, @Nullable String name) {
+        final Player player = id != null ? Bukkit.getPlayer(id) : (name != null ? Bukkit.getPlayerExact(name) : null);
+        if (player != null) {
+            final PlayerProfile playerProfile = player.getPlayerProfile();
+            if (playerProfile.hasTextures()) {
+                cacheTextures(playerProfile);
+                return playerProfile;
+            }
+
+            id = player.getUniqueId();
+            name = player.getName();
+        }
+
+        if (id == null && name != null) {
+            final OfflinePlayer cachedPlayer = Bukkit.getOfflinePlayerIfCached(name);
+            if (cachedPlayer != null) {
+                id = cachedPlayer.getUniqueId();
+                if (cachedPlayer.getName() != null) {
+                    name = cachedPlayer.getName();
+                }
+            }
+        }
+
+        if (id == null || name == null) {
+            return null;
+        }
+
+        final ProfileProperty textures = TEXTURE_CACHE.get(textureCacheKey(id, name));
+        if (textures == null) {
+            return null;
+        }
+
+        final PlayerProfile profile = Bukkit.createProfile(id, name);
+        profile.setProperty(textures);
+        return profile;
+    }
+
+    /**
+     * The old lookup path, limited to profiles Mojang can resolve (version 4 UUIDs). On an offline-mode server
+     * this only runs for players the server already knows under an online-mode UUID, so unknown names and
+     * offline-mode UUIDs never cause a request.
+     */
+    private static @Nullable PlayerProfile lookupResolvableProfile(@NotNull final String playerName) {
+        OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayerIfCached(playerName);
+        if (offlinePlayer == null) {
+            if (!Bukkit.getOnlineMode()) {
+                return null;
+            }
+            offlinePlayer = Bukkit.getOfflinePlayer(playerName);
+        }
+
+        PlayerProfile profile = offlinePlayer.getPlayerProfile();
+        if (!profile.hasTextures()) {
+            if (!isResolvableByMojang(profile)) {
+                return null;
+            }
+
+            final PlayerProfile cached = resolveProfile(profile.getId(), profile.getName());
+            if (cached != null) {
+                return cached;
+            }
+
+            // updates the Player Profile and populates textures for offline players - for some reason this doesn't populate when getting the Profile first time
+            profile = profile.update().join();
+        }
+
+        if (!profile.hasTextures()) {
+            return null;
+        }
+
+        cacheTextures(profile);
+        return profile;
+    }
+
+    /**
+     * Mojang only knows version 4 (online-mode) UUIDs. A name-only profile is only worth a lookup on an
+     * online-mode server.
+     */
+    private static boolean isResolvableByMojang(@NotNull final PlayerProfile profile) {
+        final UUID id = profile.getId();
+        if (id != null) {
+            return id.version() == 4;
+        }
+
+        return profile.getName() != null && Bukkit.getOnlineMode();
+    }
+
+    private static @Nullable ProfileProperty getTexturesProperty(@NotNull final PlayerProfile profile) {
+        for (final ProfileProperty property : profile.getProperties()) {
+            if (TEXTURES_PROPERTY.equals(property.getName())) {
+                return property;
+            }
+        }
+
+        return null;
+    }
+
+    private static @NotNull String textureCacheKey(@NotNull final UUID id, @NotNull final String name) {
+        return id + ":" + name.toLowerCase(Locale.ROOT);
     }
 
     public static String getSkullOwner(ItemStack skull) {

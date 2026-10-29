@@ -52,6 +52,7 @@ import org.bukkit.inventory.ItemFlag;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -1344,13 +1345,16 @@ public class DeluxeMenusConfig {
                 continue;
             }
 
-            final Enchantment enchantment = Enchantment.getByName(parts[0].strip().toUpperCase());
+            final Enchantment enchantment = parseEnchantment(parts[0].strip());
             if (enchantment == null) {
+                // Skip it: a null key in the map makes ItemMeta#addEnchant throw and the whole item fails to build.
+                // Logged here once per menu item on every (re)load, not on every menu open.
                 plugin.debug(
                         DebugLevel.HIGHEST,
                         Level.WARNING,
-                        "Enchantment '" + parts[0].strip() + "' for item " + itemKey + " in menu " + menuName + " is not a valid enchantment name!"
+                        "Enchantment '" + parts[0].strip() + "' for item " + itemKey + " in menu " + menuName + " is not a valid enchantment name! Skipping it."
                 );
+                continue;
             }
 
             Integer level = Ints.tryParse(parts[1].strip());
@@ -1365,6 +1369,28 @@ public class DeluxeMenusConfig {
             parsedEnchantments.put(enchantment, level);
         }
         builder.enchantments(parsedEnchantments);
+    }
+
+    /**
+     * Resolve an enchantment from a registry key ({@code sharpness}, {@code minecraft:sharpness}), a legacy enum
+     * style name ({@code SHARPNESS}) or an old Bukkit name ({@code DAMAGE_ALL}).
+     *
+     * @return the enchantment, or {@code null} if the name does not resolve on this server
+     */
+    private @Nullable Enchantment parseEnchantment(@NotNull final String name) {
+        try {
+            final Enchantment enchantment = RegistryUtils.byNameOrKey(Registry.ENCHANTMENT, name);
+            if (enchantment != null) {
+                return enchantment;
+            }
+        } catch (final IllegalArgumentException ignored) {
+        }
+
+        try {
+            return Enchantment.getByName(name.toUpperCase(Locale.ROOT));
+        } catch (final IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     public void addDamageOptionToBuilder(
