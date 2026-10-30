@@ -294,15 +294,17 @@ public class MenuHolder implements InventoryHolder {
                         if (item.options().dynamicSlot().isPresent()) {
                             try {
                                 slot = Integer.parseInt(setPlaceholdersAndArguments(item.options().dynamicSlot().get()));
-                                if (slot <= 0) {
-                                    slot = 0;
-                                }
                             } catch (Exception exception) {
                                 plugin.printStacktrace(
                                         "Something went wrong while updating item in slot " + item.options().slot() +
                                                 ". Invalid dynamic slot: " + setPlaceholdersAndArguments(item.options().dynamicSlot().get()),
                                         exception
                                 );
+                                continue;
+                            }
+                            // Out of range (e.g. -1) means hidden, same as when the menu is opened
+                            if (slot < 0 || slot >= inventory.getSize()) {
+                                continue;
                             }
                         }
                         ItemStack i = inventory.getItem(slot);

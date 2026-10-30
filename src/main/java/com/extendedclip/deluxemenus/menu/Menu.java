@@ -366,7 +366,12 @@ public class Menu {
                         slotStr = holder.setPlaceholdersAndArguments(item.options().dynamicSlot().get()).trim();
                         int dynamic = (int) Math.floor(Double.parseDouble(slotStr));
 
-                        if (dynamic < 0 || dynamic >= this.options.size()) {
+                        // A negative slot (e.g. -1) hides the item without a warning
+                        if (dynamic < 0) {
+                            continue;
+                        }
+
+                        if (dynamic >= this.options.size()) {
                             plugin.debug(DebugLevel.HIGHEST, Level.WARNING,
                                     "Dynamic slot " + dynamic + " is out of bounds for menu: " + this.options.name());
                             continue;
