@@ -21,6 +21,7 @@ public class MenuOptions {
     private final boolean parsePlaceholdersInArguments;
     private final boolean parsePlaceholdersAfterArguments;
     private final boolean enableBypassPerm;
+    private final int clickCooldown;
 
     private final List<String> commands;
     private final boolean registerCommands;
@@ -43,6 +44,7 @@ public class MenuOptions {
         this.parsePlaceholdersInArguments = builder.parsePlaceholdersInArguments;
         this.parsePlaceholdersAfterArguments = builder.parsePlaceholdersAfterArguments;
         this.enableBypassPerm = builder.enableBypassPerm;
+        this.clickCooldown = builder.clickCooldown;
 
         this.commands = builder.commands;
         this.registerCommands = builder.registerCommands;
@@ -99,6 +101,13 @@ public class MenuOptions {
         return this.enableBypassPerm;
     }
 
+    /**
+     * Menu-wide click cooldown in ticks, or -1 to use the global click_cooldown from config.yml.
+     */
+    public int clickCooldown() {
+        return this.clickCooldown;
+    }
+
     public @NotNull List<@NotNull String> commands() {
         return this.commands;
     }
@@ -141,6 +150,7 @@ public class MenuOptions {
                 .parsePlaceholdersInArguments(this.parsePlaceholdersInArguments)
                 .parsePlaceholdersAfterArguments(this.parsePlaceholdersAfterArguments)
                 .enableBypassPerm(this.enableBypassPerm)
+                .clickCooldown(this.clickCooldown)
                 .commands(this.commands)
                 .registerCommands(this.registerCommands)
                 .arguments(this.arguments)
@@ -163,6 +173,7 @@ public class MenuOptions {
         private boolean parsePlaceholdersInArguments = false;
         private boolean parsePlaceholdersAfterArguments = false;
         private boolean enableBypassPerm = false;
+        private int clickCooldown = -1;
 
         private List<String> commands = List.of();
         private boolean registerCommands = false;
@@ -226,6 +237,11 @@ public class MenuOptions {
 
         public MenuOptionsBuilder enableBypassPerm(final boolean enableBypassPerm) {
             this.enableBypassPerm = enableBypassPerm;
+            return this;
+        }
+
+        public MenuOptionsBuilder clickCooldown(final int clickCooldown) {
+            this.clickCooldown = clickCooldown;
             return this;
         }
 

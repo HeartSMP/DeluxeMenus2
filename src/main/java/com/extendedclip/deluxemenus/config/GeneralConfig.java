@@ -13,6 +13,7 @@ public class GeneralConfig {
     private int menusListPageSize = 10;
     private int metasListPageSize = 15;
     private int maxEphemeralCooldownSeconds = -1;
+    private int clickCooldownTicks = 0;
     private boolean suppressDefaultItalics = true;
 
     public GeneralConfig(final @NotNull DeluxeMenus plugin) {
@@ -26,6 +27,7 @@ public class GeneralConfig {
         plugin.getConfig().addDefault("menus_list_page_size", menusListPageSize);
         plugin.getConfig().addDefault("metas_list_page_size", metasListPageSize);
         plugin.getConfig().addDefault("max_ephemeral_cooldown_seconds", maxEphemeralCooldownSeconds);
+        plugin.getConfig().addDefault("click_cooldown", clickCooldownTicks);
         plugin.getConfig().addDefault("suppress_default_italics", suppressDefaultItalics);
 
         checkForUpdates = plugin.getConfig().getBoolean("check_updates", false);
@@ -34,6 +36,7 @@ public class GeneralConfig {
         menusListPageSize = plugin.getConfig().getInt("menus_list_page_size", 10);
         metasListPageSize = plugin.getConfig().getInt("metas_list_page_size", 15);
         maxEphemeralCooldownSeconds = plugin.getConfig().getInt("max_ephemeral_cooldown_seconds", maxEphemeralCooldownSeconds);
+        clickCooldownTicks = plugin.getConfig().getInt("click_cooldown", 0);
         suppressDefaultItalics = plugin.getConfig().getBoolean("suppress_default_italics", true);
     }
 
@@ -68,6 +71,14 @@ public class GeneralConfig {
      */
     public int maxEphemeralCooldownSeconds() {
         return maxEphemeralCooldownSeconds;
+    }
+
+    /**
+     * Default menu-wide click cooldown in ticks for menus that do not set their own click_cooldown.
+     * Zero or less means no cooldown beyond the built-in double-click guard.
+     */
+    public int clickCooldownTicks() {
+        return clickCooldownTicks;
     }
 
     public boolean suppressDefaultItalics() {

@@ -175,6 +175,8 @@ public class DeluxeMenusConfig {
         c.addDefault("menus_list_page_size", 10);
         // Longest duration the [ephemeralcooldown] action may set, in seconds. 0 or less = no limit.
         c.addDefault("max_ephemeral_cooldown_seconds", -1);
+        // Default menu-wide click cooldown in ticks for menus without their own click_cooldown. 0 = off.
+        c.addDefault("click_cooldown", 0);
         c.options().copyDefaults(true);
 
         if (!c.contains("gui_menus")) {
@@ -571,6 +573,7 @@ public class DeluxeMenusConfig {
         builder.parsePlaceholdersInArguments(c.getBoolean(pre + "arguments_support_placeholders", false));
         builder.parsePlaceholdersAfterArguments(c.getBoolean(pre + "parse_placeholders_after_arguments", false));
         builder.enableBypassPerm(c.getBoolean(pre + "enable_open_requirements_bypass_permissions", false));
+        builder.clickCooldown(c.getInt(pre + "click_cooldown", -1));
 
         // Don't need to register the menu since it's done in the constructor
         new Menu(plugin, builder.build(), items, path);
@@ -632,6 +635,7 @@ public class DeluxeMenusConfig {
                     .rgb(c.getString(currentPath + "rgb", null))
                     .unbreakable(c.getBoolean(currentPath + "unbreakable", false))
                     .updatePlaceholders(c.getBoolean(currentPath + "update", false))
+                    .clickCooldown(c.getInt(currentPath + "click_cooldown", -1))
                     .hideAttributes(c.getBoolean(currentPath + "hide_attributes", false))
                     .hideUnbreakable(c.getBoolean(currentPath + "hide_unbreakable", false))
                     .hideEnchants(c.getBoolean(currentPath + "hide_enchantments", false))

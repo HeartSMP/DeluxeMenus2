@@ -20,8 +20,10 @@ import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 public class PlayerListener extends Listener {
@@ -30,6 +32,9 @@ public class PlayerListener extends Listener {
 
     // This is so dumb. Mojang fix your shit.
     private final Cache<UUID, Long> shiftCache = CacheBuilder.newBuilder().expireAfterWrite(200, TimeUnit.MILLISECONDS).build();
+
+    // click_cooldown: player -> (menu or menu#slot) -> time in millis until clicks are accepted again
+    private final Map<UUID, Map<String, Long>> clickCooldowns = new ConcurrentHashMap<>();
 
     public PlayerListener(@NotNull final DeluxeMenus plugin) {
         super(plugin);
@@ -59,6 +64,7 @@ public class PlayerListener extends Listener {
     @EventHandler
     public void onLeave(PlayerQuitEvent event) {
         Player player = event.getPlayer();
+        clickCooldowns.remove(player.getUniqueId());
 
         if (Menu.isInMenu(player)) {
             Menu.closeMenu(plugin, player, false);
@@ -148,40 +154,45 @@ public class PlayerListener extends Listener {
             return;
         }
 
+        final Runnable startCooldown = clickCooldown(player, holder, item, slot);
+        if (startCooldown == null) {
+            return;
+        }
+
         if (event.getClick() == ClickType.SHIFT_LEFT) {
             this.shiftCache.put(player.getUniqueId(), System.currentTimeMillis());
         }
 
-        if (handleClick(player, holder, item.options().clickHandler(), item.options().clickRequirements())) {
+        if (handleClick(player, holder, startCooldown, item.options().clickHandler(), item.options().clickRequirements())) {
             return;
         }
 
         if (event.isShiftClick() && event.isLeftClick()) {
-            if (handleClick(player, holder, item.options().shiftLeftClickHandler(), item.options().shiftLeftClickRequirements())) {
+            if (handleClick(player, holder, startCooldown, item.options().shiftLeftClickHandler(), item.options().shiftLeftClickRequirements())) {
                 return;
             }
         }
 
         if (event.isShiftClick() && event.isRightClick()) {
-            if (handleClick(player, holder, item.options().shiftRightClickHandler(), item.options().shiftRightClickRequirements())) {
+            if (handleClick(player, holder, startCooldown, item.options().shiftRightClickHandler(), item.options().shiftRightClickRequirements())) {
                 return;
             }
         }
 
         if (event.getClick() == ClickType.LEFT) {
-            if (handleClick(player, holder, item.options().leftClickHandler(), item.options().leftClickRequirements())) {
+            if (handleClick(player, holder, startCooldown, item.options().leftClickHandler(), item.options().leftClickRequirements())) {
                 return;
             }
         }
 
         if (event.getClick() == ClickType.RIGHT) {
-            if (handleClick(player, holder, item.options().rightClickHandler(), item.options().rightClickRequirements())) {
+            if (handleClick(player, holder, startCooldown, item.options().rightClickHandler(), item.options().rightClickRequirements())) {
                 return;
             }
         }
 
         if (event.getClick() == ClickType.MIDDLE) {
-            if (handleClick(player, holder, item.options().middleClickHandler(), item.options().middleClickRequirements())) {
+            if (handleClick(player, holder, startCooldown, item.options().middleClickHandler(), item.options().middleClickRequirements())) {
             }
         }
     }
@@ -191,11 +202,12 @@ public class PlayerListener extends Listener {
      *
      * @param player       player who clicked
      * @param holder       menu holder
+     * @param onExecute    runs right before the click handler, used to start the click cooldown
      * @param handler      click handler
      * @param requirements click requirements
      * @return true if click was handled successfully. will ever return false if no click handler was found
      */
-    private boolean handleClick(final @NotNull Player player, final @NotNull MenuHolder holder, final @NotNull Optional<ClickHandler> handler, final @NotNull Optional<RequirementList> requirements) {
+    private boolean handleClick(final @NotNull Player player, final @NotNull MenuHolder holder, final @NotNull Runnable onExecute, final @NotNull Optional<ClickHandler> handler, final @NotNull Optional<RequirementList> requirements) {
         if (handler.isEmpty()) {
             return false;
         }
@@ -214,8 +226,50 @@ public class PlayerListener extends Listener {
         }
 
         this.cache.put(player.getUniqueId(), System.currentTimeMillis());
+        onExecute.run();
         handler.get().onClick(holder);
 
         return true;
+    }
+
+    /**
+     * Checks the click_cooldown that applies to this item. An item with its own click_cooldown has a
+     * cooldown of its own; any other item shares one cooldown with the whole menu (the menu value, or the
+     * global one from config.yml). The shared one also stops a fast click on a second item, e.g. two
+     * shop items paid from the same balance before a placeholder catches up.
+     *
+     * @return null while the cooldown is still running, otherwise the task that starts it after a click
+     */
+    private Runnable clickCooldown(final @NotNull Player player, final @NotNull MenuHolder holder,
+                                   final @NotNull MenuItem item, final int slot) {
+        final Optional<Menu> menu = holder.getMenu();
+        if (menu.isEmpty()) {
+            return () -> {};
+        }
+
+        final int itemTicks = item.options().clickCooldown();
+        final int ticks;
+        final String key;
+        if (itemTicks >= 0) {
+            ticks = itemTicks;
+            key = menu.get().options().name() + "#" + slot;
+        } else {
+            final int menuTicks = menu.get().options().clickCooldown();
+            ticks = menuTicks >= 0 ? menuTicks : plugin.getGeneralConfig().clickCooldownTicks();
+            key = menu.get().options().name();
+        }
+        if (ticks <= 0) {
+            return () -> {};
+        }
+
+        final UUID uuid = player.getUniqueId();
+        final Map<String, Long> cooldowns = clickCooldowns.get(uuid);
+        final Long until = cooldowns == null ? null : cooldowns.get(key);
+        if (until != null && until > System.currentTimeMillis()) {
+            return null;
+        }
+
+        return () -> clickCooldowns.computeIfAbsent(uuid, ignored -> new ConcurrentHashMap<>())
+                .put(key, System.currentTimeMillis() + ticks * 50L);
     }
 }

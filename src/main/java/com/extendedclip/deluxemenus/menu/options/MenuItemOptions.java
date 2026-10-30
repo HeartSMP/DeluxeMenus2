@@ -68,6 +68,7 @@ public class MenuItemOptions {
     private final int slot;
     private final int priority;
     private final boolean updatePlaceholders;
+    private final int clickCooldown;
 
     private final ClickHandler clickHandler;
     private final ClickHandler leftClickHandler;
@@ -125,6 +126,7 @@ public class MenuItemOptions {
         this.slot = builder.slot;
         this.priority = builder.priority;
         this.updatePlaceholders = builder.updatePlaceholders;
+        this.clickCooldown = builder.clickCooldown;
         this.clickHandler = builder.clickHandler;
         this.leftClickHandler = builder.leftClickHandler;
         this.rightClickHandler = builder.rightClickHandler;
@@ -308,6 +310,13 @@ public class MenuItemOptions {
         return updatePlaceholders;
     }
 
+    /**
+     * Click cooldown of this item in ticks, or -1 to use the menu (or global) cooldown instead.
+     */
+    public int clickCooldown() {
+        return clickCooldown;
+    }
+
     public @NotNull Optional<ClickHandler> clickHandler() {
         return Optional.ofNullable(clickHandler);
     }
@@ -400,6 +409,7 @@ public class MenuItemOptions {
                 .slot(this.slot)
                 .priority(this.priority)
                 .updatePlaceholders(this.updatePlaceholders)
+                .clickCooldown(this.clickCooldown)
                 .clickHandler(this.clickHandler)
                 .leftClickHandler(this.leftClickHandler)
                 .rightClickHandler(this.rightClickHandler)
@@ -464,6 +474,7 @@ public class MenuItemOptions {
         private int slot;
         private int priority;
         private boolean updatePlaceholders;
+        private int clickCooldown = -1;
 
         private ClickHandler clickHandler;
         private ClickHandler leftClickHandler;
@@ -697,6 +708,11 @@ public class MenuItemOptions {
 
         public MenuItemOptionsBuilder updatePlaceholders(final boolean updatePlaceholders) {
             this.updatePlaceholders = updatePlaceholders;
+            return this;
+        }
+
+        public MenuItemOptionsBuilder clickCooldown(final int clickCooldown) {
+            this.clickCooldown = clickCooldown;
             return this;
         }
 
